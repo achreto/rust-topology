@@ -18,7 +18,6 @@ extern crate alloc;
 #[cfg(target_os = "none")]
 mod acpi;
 mod acpi_types;
-mod cpuid;
 
 use alloc::vec::Vec;
 #[cfg(target_os = "none")]
@@ -26,7 +25,14 @@ use core::convert::TryInto;
 use core::fmt;
 
 use lazy_static::lazy_static;
-use x86::apic::ApicId;
+
+#[cfg(target_arch = "x86_64")]
+#[path = "arch/x86.rs"]
+mod arch;
+
+#[cfg(target_arch = "aarch64")]
+#[path = "arch/aarch64.rs"]
+mod arch;
 
 #[cfg(target_os = "none")]
 use acpi::{process_madt, process_msct, process_nfit, process_srat};
@@ -52,17 +58,19 @@ pub type PackageId = usize;
 pub type NodeId = usize;
 
 /// Differentiate between local APICs and X2APICs.
-#[derive(Eq, PartialEq, Debug, Ord, PartialOrd)]
-enum ApicThreadInfo {
-    Apic(LocalApic),
-    X2Apic(LocalX2Apic),
+#[derive(Eq, PartialEq, Debug, Ord, PartialOrd, Clone, Copy)]
+pub enum HwId {
+    Apic(u32),
+    X2Apic(u32),
+    Mpid(u32),
 }
 
-impl ApicThreadInfo {
-    fn id(&self) -> ApicId {
+impl HwId {
+    fn id(&self) -> u32 {
         match &self {
-            ApicThreadInfo::Apic(apic) => ApicId::XApic(apic.apic_id),
-            ApicThreadInfo::X2Apic(x2apic) => ApicId::X2Apic(x2apic.apic_id),
+            HwId::Apic(apic) => *apic,
+            HwId::X2Apic(x2apic) => *x2apic,
+            HwId::Mpid(mpid) => *mpid,
         }
     }
 }
@@ -81,7 +89,7 @@ pub struct Thread {
     /// ID of the thread (usually between 0..1)
     pub thread_id: ThreadId,
     /// Thread is represented either by a LocalApic or LocalX2Apic entry.
-    apic: ApicThreadInfo,
+    hwid: HwId,
 }
 
 impl PartialEq for Thread {
@@ -96,7 +104,7 @@ impl fmt::Debug for Thread {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Thread")
             .field("id", &self.id)
-            .field("apic_id", &self.apic.id())
+            .field("apic_id", &self.hwid.id())
             .field(
                 "thread/core/package",
                 &(self.thread_id, self.core_id, self.package_id),
@@ -108,23 +116,20 @@ impl fmt::Debug for Thread {
 
 impl Thread {
     /// Construct a thread with a LocalApic struct.
-    fn new_with_apic(
-        global_id: GlobalThreadId,
-        apic: LocalApic,
-        node_id: Option<NodeId>,
-    ) -> Thread {
+    fn new_with_apic(global_id: GlobalThreadId, apic: u32, node_id: Option<NodeId>) -> Thread {
+        let hwid = HwId::Apic(apic);
+
         // We use `get_topology_from_x2apic_id` which should still work (in most
         // cases) if it holds that all lower x2apic ids are identical to apic
         // ids below 256. I can't seem to get to the right AMD topology with the
         // regular xapic cpuid code and unfortunately I can't find much
         // documentation on how to do it for AMD with the 0x8000_0008 leaf.
         // So this will have to do:
-        let (thread_id, core_id, package_id) =
-            cpuid::get_topology_from_x2apic_id(apic.apic_id as u32);
+        let (thread_id, core_id, package_id) = arch::get_topology(hwid);
 
         Thread {
             id: global_id,
-            apic: ApicThreadInfo::Apic(apic),
+            hwid,
             thread_id,
             core_id,
             package_id,
@@ -133,16 +138,27 @@ impl Thread {
     }
 
     /// Construct a thread with a LocalX2Apic struct.
-    fn new_with_x2apic(
-        global_id: GlobalThreadId,
-        apic: LocalX2Apic,
-        node_id: Option<NodeId>,
-    ) -> Thread {
-        let (thread_id, core_id, package_id) = cpuid::get_topology_from_x2apic_id(apic.apic_id);
+    fn new_with_x2apic(global_id: GlobalThreadId, apic: u32, node_id: Option<NodeId>) -> Thread {
+        let hwid = HwId::X2Apic(apic);
+        let (thread_id, core_id, package_id) = arch::get_topology(hwid);
 
         Thread {
             id: global_id,
-            apic: ApicThreadInfo::X2Apic(apic),
+            hwid,
+            thread_id,
+            core_id,
+            package_id,
+            node_id,
+        }
+    }
+
+    fn new_with_mpid(global_id: GlobalThreadId, mpid: u32, node_id: Option<NodeId>) -> Thread {
+        let hwid = HwId::Mpid(mpid);
+        let (thread_id, core_id, package_id) = arch::get_topology(hwid);
+
+        Thread {
+            id: global_id,
+            hwid,
             thread_id,
             core_id,
             package_id,
@@ -151,8 +167,8 @@ impl Thread {
     }
 
     /// APIC ID (unique in the system).
-    pub fn apic_id(&self) -> ApicId {
-        self.apic.id()
+    pub fn hw_id(&self) -> u32 {
+        self.hwid.id()
     }
 
     /// All neighboring threads (on the same core)
@@ -333,123 +349,6 @@ impl Node {
     }
 }
 
-#[cfg(target_os = "none")]
-lazy_static! {
-    /// A struct that contains all information about current machine we're
-    /// running on (discovered from ACPI Tables and cpuid).
-    ///
-    /// Should have some of the following:
-    /// - Cores, NUMA nodes, Memory regions
-    /// - Interrupt routing (I/O APICs, overrides) (TODO)
-    /// - PCIe root complexes (TODO)
-    ///
-    /// # Note
-    /// Not `no_global_oom_handling` safe, low priority as this allocates early
-    /// during init and is static after (no hotplug support atm).
-    pub static ref MACHINE_TOPOLOGY: MachineInfo = {
-        use log::debug;
-
-        // Let's get all the APIC information and transform it into a MachineInfo struct
-        let (mut local_apics, mut local_x2apics, ioapics) = process_madt();
-        let (mut core_affinity, mut x2apic_affinity, memory_affinity) = process_srat();
-        let (max_proximity_info, prox_domain_info) = process_msct();
-        let pmem_descriptors = process_nfit();
-
-        local_apics.sort_unstable_by(|a, b| a.apic_id.cmp(&b.apic_id));
-        local_x2apics.sort_unstable_by(|a, b| a.apic_id.cmp(&b.apic_id));
-
-        // These to are sorted in decending order since we pop from the stack:
-        core_affinity.sort_unstable_by(|a, b| b.apic_id.cmp(&a.apic_id));
-        x2apic_affinity.sort_unstable_by(|a, b| b.x2apic_id.cmp(&a.x2apic_id));
-
-        assert!(local_apics.len() == core_affinity.len() || core_affinity.is_empty(),
-            "Either we have matching entries for core in affinity table or no affinity information at all.");
-
-        // Make Thread objects out of APIC MADT entries:
-        let mut global_thread_id: GlobalThreadId = 0;
-        let mut threads = Vec::with_capacity(local_apics.len() + local_x2apics.len());
-
-        // Add all local APIC entries
-        for local_apic in local_apics {
-
-            // Try to figure out which proximity domain (NUMA node) a thread belongs to:
-            let mut proximity_domain = None;
-            if !core_affinity.is_empty() {
-                let affinity_entry = core_affinity.pop();
-                if affinity_entry.as_ref().unwrap().apic_id == local_apic.apic_id {
-                    proximity_domain = affinity_entry.as_ref().map(|a| a.proximity_domain as usize);
-                }
-                else {
-                    core_affinity.push(affinity_entry.unwrap());
-                }
-            }
-
-            // Cores with IDs < 255 appear as local apic entries, cores above
-            // 255 appear as x2apic entries. However, for SRAT entries (to
-            // figure out NUMA affinity), some machines will put all entries as
-            // X2APIC affinities :S. So we have to check the x2apic_affinity too
-            if proximity_domain.is_none() && !x2apic_affinity.is_empty() {
-                let affinity_entry = x2apic_affinity.pop();
-                let x2apic_id: u8 = affinity_entry.as_ref().unwrap().x2apic_id.try_into().unwrap();
-                if x2apic_id == local_apic.apic_id {
-                    proximity_domain = affinity_entry.as_ref().map(|a| a.proximity_domain as usize);
-                }
-                else {
-                    x2apic_affinity.push(affinity_entry.unwrap());
-                }
-            }
-
-            let t = Thread::new_with_apic(global_thread_id, local_apic, proximity_domain);
-            debug!("Found {:?}", t);
-            threads.push(t);
-            global_thread_id += 1;
-        }
-
-        // Add all x2APIC entries
-        for local_x2apic in local_x2apics {
-            let affinity = x2apic_affinity.pop();
-            if let Some(affinity_entry) = affinity.as_ref() {
-                assert_eq!(affinity_entry.x2apic_id, local_x2apic.apic_id, "The x2apic_affinity and local_x2apic are not in the same order?");
-            }
-            let t = Thread::new_with_x2apic(global_thread_id, local_x2apic, affinity.map(|a| a.proximity_domain as usize));
-            debug!("Found {:?}", t);
-            threads.push(t);
-            global_thread_id += 1;
-        }
-
-        // Next, we can construct the cores, packages, and nodes from threads
-        let mut cores: Vec<Core> = threads.iter().map(|t| Core::new(t.node_id, t.package_id, t.core_id)).collect();
-        cores.sort_unstable();
-        cores.dedup();
-
-        // Gather all packages
-        let mut packages: Vec<Package> = threads.iter().map(|t| Package::new(t.package_id, t.node_id)).collect();
-        packages.sort_unstable();
-        packages.dedup();
-
-        // Gather all nodes
-        let mut nodes: Vec<Node> = threads
-            .iter()
-            .filter(|t| t.node_id.is_some())
-            .map(|t| Node::new(t.node_id.unwrap_or(0)))
-            .collect::<Vec<Node>>();
-        nodes.sort_unstable();
-        nodes.dedup();
-
-        MachineInfo::new(
-            threads,
-            cores,
-            packages,
-            nodes,
-            ioapics,
-            memory_affinity,
-            pmem_descriptors,
-            max_proximity_info,
-            prox_domain_info
-        )
-    };
-}
-
 #[cfg(not(target_os = "none"))]
 lazy_static! {
     /// A struct that contains all information about current machine we're
@@ -469,19 +368,14 @@ lazy_static! {
 
         let cpuinfo = procfs::CpuInfo::new().expect("can't have cpuinfo");
         for res in cpuinfo.cpus {
-            let la = LocalApic {
-                apic_id: res["apicid"].parse::<u8>().unwrap(),
-                processor_id: res["processor"].parse::<u8>().unwrap(), // TODO: probably not correct entry
-                enabled: true
-            };
-
             let t = Thread {
                 id: res["processor"].parse::<usize>().unwrap(),
                 node_id: None, // TODO: complete me
                 package_id: 0, // TODO: complete me
                 core_id: res["core id"].parse::<usize>().unwrap(),
                 thread_id: 0, // TODO: complete me
-                apic: ApicThreadInfo::Apic(la),
+                /// TODO: this field is probably not correct for armv8
+                hwid: HwId::Apic(res["apicid"].parse::<u32>().unwrap()),
             };
             threads.push(t);
         }
@@ -560,38 +454,6 @@ impl MachineInfo {
         }
     }
 
-    fn determine_apic_id_with_cpuid() -> x86::apic::ApicId {
-        let cpuid = x86::cpuid::CpuId::new();
-        let xapic_id: Option<u8> = cpuid
-            .get_feature_info()
-            .as_ref()
-            .map(|finfo| finfo.initial_local_apic_id());
-
-        let x2apic_id: Option<u32> = cpuid
-            .get_extended_topology_info()
-            .and_then(|mut topiter| topiter.next().as_ref().map(|t| t.x2apic_id()));
-
-        match (x2apic_id, xapic_id) {
-            (None, None) => {
-                unreachable!("Can't determine APIC ID, bad. (Maybe try fallback on APIC_BASE_MSR")
-            }
-            (Some(x2id), None) => ApicId::X2Apic(x2id),
-            (None, Some(xid)) => ApicId::XApic(xid),
-            (Some(x2id), Some(xid)) => {
-                // 10.12.8.1 Consistency of APIC IDs and CPUID: "Initial APIC ID (CPUID.01H:EBX[31:24]) is always equal to CPUID.0BH:EDX[7:0]."
-                debug_assert!(
-                    (x2id & 0xff) == xid.into(),
-                    "xAPIC ID is first byte of X2APIC ID"
-                );
-                if (xid as u32) == x2id {
-                    ApicId::XApic(xid)
-                } else {
-                    ApicId::X2Apic(x2id)
-                }
-            }
-        }
-    }
-
     /// Returns the current thread we're running on.
     ///
     /// # Notes
@@ -604,10 +466,10 @@ impl MachineInfo {
     /// You also need to ensure that execution is not migrated to
     /// another core during execution of `current_thread`.
     pub fn current_thread(&'static self) -> &'static Thread {
-        let apic_id = MachineInfo::determine_apic_id_with_cpuid();
+        let apic_id = arch::determine_hw_id_with_cpuid();
 
         self.threads()
-            .find(move |t| t.apic_id() == apic_id)
+            .find(move |t| t.hw_id() == apic_id.id())
             .unwrap()
     }
 
