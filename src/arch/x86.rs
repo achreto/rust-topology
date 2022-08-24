@@ -1,8 +1,14 @@
+//! Interface to query information about the underlying hardware.
+//! X86-specific information.
+
 use std::convert::TryInto;
 
 extern crate x86;
 
 use crate::{CoreId, HwId, PackageId, ThreadId};
+
+#[cfg(target_os = "none")]
+use lazy_static::lazy_static;
 
 /// Silly helper trait for computing power of two
 trait PowersOf2 {

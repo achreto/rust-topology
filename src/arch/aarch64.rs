@@ -1,4 +1,10 @@
+//! Interface to query information about the underlying hardware.
+//! AArch64-specific information.
+
 use crate::{CoreId, HwId, PackageId, ThreadId};
+
+#[cfg(target_os = "none")]
+use lazy_static::lazy_static;
 
 pub fn determine_hw_id_with_cpuid() -> HwId {
     panic!("NYI");
