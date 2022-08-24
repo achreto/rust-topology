@@ -243,7 +243,7 @@ lazy_static! {
                 }
             }
 
-            let t = Thread::new_with_apic(global_thread_id, local_apic, proximity_domain);
+            let t = Thread::new_with_apic(global_thread_id, local_apic.apic_id as u32, proximity_domain);
             debug!("Found {:?}", t);
             threads.push(t);
             global_thread_id += 1;
@@ -255,7 +255,7 @@ lazy_static! {
             if let Some(affinity_entry) = affinity.as_ref() {
                 assert_eq!(affinity_entry.x2apic_id, local_x2apic.apic_id, "The x2apic_affinity and local_x2apic are not in the same order?");
             }
-            let t = Thread::new_with_x2apic(global_thread_id, local_x2apic, affinity.map(|a| a.proximity_domain as usize));
+            let t = Thread::new_with_x2apic(global_thread_id, local_x2apic.apic_id, affinity.map(|a| a.proximity_domain as usize));
             debug!("Found {:?}", t);
             threads.push(t);
             global_thread_id += 1;
