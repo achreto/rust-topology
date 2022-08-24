@@ -4,8 +4,10 @@
 use crate::{CoreId, HwId, PackageId, ThreadId};
 
 #[cfg(target_os = "none")]
-use lazy_static::lazy_static;
 use crate::MachineInfo;
+
+#[cfg(target_os = "none")]
+use lazy_static::lazy_static;
 
 pub fn determine_hw_id_with_cpuid() -> HwId {
     panic!("NYI");

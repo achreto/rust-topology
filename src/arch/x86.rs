@@ -1,15 +1,18 @@
 //! Interface to query information about the underlying hardware.
 //! X86-specific information.
 
+use alloc::vec::Vec;
 use std::convert::TryInto;
 
 extern crate x86;
 
-use crate::{CoreId, HwId, PackageId, ThreadId};
+use crate::{Core, CoreId, HwId, Node, Package, PackageId, ThreadId};
+
+#[cfg(target_os = "none")]
+use crate::{process_madt, process_msct, process_nfit, process_srat, MachineInfo};
 
 #[cfg(target_os = "none")]
 use lazy_static::lazy_static;
-use crate::MachineInfo;
 
 /// Silly helper trait for computing power of two
 trait PowersOf2 {
