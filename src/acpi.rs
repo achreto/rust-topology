@@ -4,6 +4,7 @@ use libacpica::*;
 use core::fmt;
 use core::mem;
 use core::ptr;
+use cstr_core::c_char;
 
 use crate::alloc::alloc;
 use crate::alloc::vec::Vec;
@@ -58,7 +59,7 @@ pub fn process_pcie() {
                     as *mut libacpica::c_void,
             };
             let _ret = AcpiGetName(handle, ACPI_FULL_PATHNAME, &mut namebuf);
-            let name = CStr::from_ptr(namebuf.Pointer as *const i8)
+            let name = CStr::from_ptr(namebuf.Pointer as *const c_char)
                 .to_str()
                 .unwrap_or("");
 
@@ -88,7 +89,7 @@ pub fn process_pcie() {
         }
 
         let _ret = AcpiGetDevices(
-            pcie_exp.as_ptr() as *mut cstr_core::c_char,
+            pcie_exp.as_ptr() as ACPI_STRING,
             Some(call_back),
             ptr::null_mut(),
             ptr::null_mut(),
@@ -117,7 +118,7 @@ pub fn process_srat() -> (
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
         let ret = AcpiGetTable(
-            ACPI_SIG_SRAT.as_ptr() as *mut cstr_core::c_char,
+            ACPI_SIG_SRAT.as_ptr() as ACPI_STRING,
             1,
             &mut table_header,
         );
@@ -261,7 +262,7 @@ pub fn process_madt() -> (Vec<LocalApic>, Vec<LocalX2Apic>, Vec<IoApic>) {
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
         let ret = AcpiGetTable(
-            ACPI_SIG_MADT.as_ptr() as *mut cstr_core::c_char,
+            ACPI_SIG_MADT.as_ptr() as ACPI_STRING,
             1,
             &mut table_header,
         );
@@ -369,7 +370,7 @@ pub fn process_msct() -> (
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
         let ret = AcpiGetTable(
-            ACPI_SIG_MSCT.as_ptr() as *mut cstr_core::c_char,
+            ACPI_SIG_MSCT.as_ptr() as ACPI_STRING,
             1,
             &mut table_header,
         );
@@ -433,7 +434,7 @@ pub fn process_nfit(page_size: usize) -> Vec<MemoryDescriptor> {
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
         let ret = AcpiGetTable(
-            ACPI_SIG_NFIT.as_ptr() as *mut cstr_core::c_char,
+            ACPI_SIG_NFIT.as_ptr() as ACPI_STRING,
             1,
             &mut table_header,
         );
