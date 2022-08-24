@@ -184,7 +184,7 @@ lazy_static! {
         let (mut local_apics, mut local_x2apics, ioapics) = process_madt();
         let (mut core_affinity, mut x2apic_affinity, memory_affinity) = process_srat();
         let (max_proximity_info, prox_domain_info) = process_msct();
-        let pmem_descriptors = process_nfit();
+        let pmem_descriptors = process_nfit(x86::bits64::paging::BASE_PAGE_SIZE);
 
         local_apics.sort_unstable_by(|a, b| a.apic_id.cmp(&b.apic_id));
         local_x2apics.sort_unstable_by(|a, b| a.apic_id.cmp(&b.apic_id));

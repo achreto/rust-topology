@@ -34,7 +34,6 @@ mod arch;
 #[path = "arch/aarch64.rs"]
 mod arch;
 
-
 #[cfg(target_os = "none")]
 pub use arch::MACHINE_TOPOLOGY;
 

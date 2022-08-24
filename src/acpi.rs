@@ -14,8 +14,6 @@ use crate::acpi_types::*;
 use cstr_core::CStr;
 use log::{debug, info, trace, warn};
 
-use x86::current::paging::BASE_PAGE_SIZE;
-
 const ACPI_FULL_PATHNAME: u32 = 0;
 const ACPI_TYPE_INTEGER: u32 = 0x01;
 
@@ -428,7 +426,7 @@ macro_rules! read {
 }
 
 // https://uefi.org/specs/ACPI/6.4/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#nvdimm-firmware-interface-table-nfit
-pub fn process_nfit() -> Vec<MemoryDescriptor> {
+pub fn process_nfit(page_size: usize) -> Vec<MemoryDescriptor> {
     let mut pmem_descriptors = Vec::with_capacity(8);
 
     unsafe {
@@ -454,7 +452,7 @@ pub fn process_nfit() -> Vec<MemoryDescriptor> {
                 match entry_type {
                     AcpiNfitType::ACPI_NFIT_TYPE_SYSTEM_ADDRESS => {
                         let entry = iterator as *const ACPI_NFIT_SYSTEM_ADDRESS;
-                        let mem_desc = parse_nfit_spa_range_structure(entry);
+                        let mem_desc = parse_nfit_spa_range_structure(entry, page_size);
                         pmem_descriptors.push(mem_desc);
                     }
                     AcpiNfitType::ACPI_NFIT_TYPE_MEMORY_MAP => {
@@ -542,7 +540,10 @@ impl From<&[u8; 16]> for Guid {
 }
 
 // NFIT subtable type = 0x0
-fn parse_nfit_spa_range_structure(entry: *const ACPI_NFIT_SYSTEM_ADDRESS) -> MemoryDescriptor {
+fn parse_nfit_spa_range_structure(
+    entry: *const ACPI_NFIT_SYSTEM_ADDRESS,
+    page_size: usize,
+) -> MemoryDescriptor {
     unsafe {
         assert_eq!(read!((*entry).Header.Type), 0);
         debug!(
@@ -566,7 +567,7 @@ fn parse_nfit_spa_range_structure(entry: *const ACPI_NFIT_SYSTEM_ADDRESS) -> Mem
         );
 
         assert_eq!(
-            (*entry).Length % BASE_PAGE_SIZE as u64,
+            (*entry).Length % page_size as u64,
             0,
             "Not multiple of page-size."
         );
@@ -575,7 +576,7 @@ fn parse_nfit_spa_range_structure(entry: *const ACPI_NFIT_SYSTEM_ADDRESS) -> Mem
             padding: 0,
             phys_start: (*entry).Address,
             virt_start: 0,
-            page_count: (*entry).Length / BASE_PAGE_SIZE as u64,
+            page_count: (*entry).Length / page_size as u64,
             att: MemoryAttribute::from((*entry).MemoryMapping),
         }
     }
