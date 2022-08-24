@@ -92,7 +92,7 @@ pub struct Thread {
     /// ID of the thread (usually between 0..1)
     pub thread_id: ThreadId,
     /// Thread is represented either by a LocalApic or LocalX2Apic entry.
-    hwid: HwId,
+    pub hwid: HwId,
 }
 
 impl PartialEq for Thread {
@@ -170,7 +170,7 @@ impl Thread {
     }
 
     /// APIC ID (unique in the system).
-    pub fn hw_id(&self) -> u32 {
+    pub fn hw_id_raw(&self) -> u32 {
         self.hwid.id()
     }
 
