@@ -34,6 +34,10 @@ mod arch;
 #[path = "arch/aarch64.rs"]
 mod arch;
 
+
+#[cfg(target_os = "none")]
+pub use arch::MACHINE_TOPOLOGY;
+
 #[cfg(target_os = "none")]
 use acpi::{process_madt, process_msct, process_nfit, process_srat};
 pub use acpi_types::MemoryType;
