@@ -293,3 +293,13 @@ lazy_static! {
         )
     };
 }
+
+impl From<HwId> for x86::apic::ApicId {
+    fn from(hw_id: HwId) -> x86::apic::ApicId {
+        match hw_id {
+            HwId::Apic(id) => x86::apic::ApicId::XApic(id.try_into().unwrap()),
+            HwId::X2Apic(id) => x86::apic::ApicId::X2Apic(id),
+            _ => panic!("Unsupported hardware id"),
+        }
+    }
+}

@@ -117,11 +117,7 @@ pub fn process_srat() -> (
     unsafe {
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
-        let ret = AcpiGetTable(
-            ACPI_SIG_SRAT.as_ptr() as ACPI_STRING,
-            1,
-            &mut table_header,
-        );
+        let ret = AcpiGetTable(ACPI_SIG_SRAT.as_ptr() as ACPI_STRING, 1, &mut table_header);
 
         if ret == AE_OK {
             let srat_tbl_ptr = table_header as *const ACPI_TABLE_SRAT;
@@ -261,11 +257,7 @@ pub fn process_madt() -> (Vec<LocalApic>, Vec<LocalX2Apic>, Vec<IoApic>) {
     unsafe {
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
-        let ret = AcpiGetTable(
-            ACPI_SIG_MADT.as_ptr() as ACPI_STRING,
-            1,
-            &mut table_header,
-        );
+        let ret = AcpiGetTable(ACPI_SIG_MADT.as_ptr() as ACPI_STRING, 1, &mut table_header);
         assert_eq!(ret, AE_OK);
 
         let madt_tbl_ptr = table_header as *const ACPI_TABLE_MADT;
@@ -369,11 +361,7 @@ pub fn process_msct() -> (
     unsafe {
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
-        let ret = AcpiGetTable(
-            ACPI_SIG_MSCT.as_ptr() as ACPI_STRING,
-            1,
-            &mut table_header,
-        );
+        let ret = AcpiGetTable(ACPI_SIG_MSCT.as_ptr() as ACPI_STRING, 1, &mut table_header);
         if ret != AE_OK {
             return (Default::default(), Vec::new());
         }
@@ -433,11 +421,7 @@ pub fn process_nfit(page_size: usize) -> Vec<MemoryDescriptor> {
     unsafe {
         let mut table_header: *mut ACPI_TABLE_HEADER = ptr::null_mut();
 
-        let ret = AcpiGetTable(
-            ACPI_SIG_NFIT.as_ptr() as ACPI_STRING,
-            1,
-            &mut table_header,
-        );
+        let ret = AcpiGetTable(ACPI_SIG_NFIT.as_ptr() as ACPI_STRING, 1, &mut table_header);
         if ret == AE_OK {
             let nfit_tbl_ptr = table_header as *const ACPI_TABLE_NFIT;
             let nfit_table_len = (*nfit_tbl_ptr).Header.Length as usize;
