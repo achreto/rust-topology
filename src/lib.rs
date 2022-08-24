@@ -472,7 +472,7 @@ impl MachineInfo {
         let apic_id = arch::determine_hw_id_with_cpuid();
 
         self.threads()
-            .find(move |t| t.hw_id() == apic_id.id())
+            .find(move |t| t.hw_id_raw() == apic_id.id())
             .unwrap()
     }
 
