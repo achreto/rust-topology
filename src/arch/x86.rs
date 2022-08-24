@@ -9,6 +9,7 @@ use crate::{CoreId, HwId, PackageId, ThreadId};
 
 #[cfg(target_os = "none")]
 use lazy_static::lazy_static;
+use crate::MachineInfo;
 
 /// Silly helper trait for computing power of two
 trait PowersOf2 {
