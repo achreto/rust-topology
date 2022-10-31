@@ -1,7 +1,10 @@
 //! Interface to query information about the underlying hardware.
 //! AArch64-specific information.
 
-use crate::{CoreId, HwId, PackageId, ThreadId};
+use alloc::vec::Vec;
+use alloc::vec;
+
+use crate::{CoreId, Core, HwId, MaximumSystemCharacteristics, PackageId, Package, ThreadId, Thread};
 
 #[cfg(target_os = "none")]
 use crate::MachineInfo;
@@ -31,6 +34,25 @@ lazy_static! {
     /// Not `no_global_oom_handling` safe, low priority as this allocates early
     /// during init and is static after (no hotplug support atm).
     pub static ref MACHINE_TOPOLOGY: MachineInfo = {
-        panic!("NYI");
+
+        MachineInfo::new(
+            vec![
+                Thread {
+                    id: 0, node_id: None, package_id: 0, core_id: 0, thread_id: 0, hwid: HwId::Mpid(0)
+                }
+            ],
+            vec![
+                Core::new(Some(0), 0, 0)
+            ],
+            vec![
+                Package::new(0, None)
+            ],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            MaximumSystemCharacteristics::default(),
+            vec![]
+        )
     };
 }
