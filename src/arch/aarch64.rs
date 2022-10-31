@@ -1,10 +1,12 @@
 //! Interface to query information about the underlying hardware.
 //! AArch64-specific information.
 
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 
-use crate::{CoreId, Core, HwId, MaximumSystemCharacteristics, PackageId, Package, ThreadId, Thread};
+use crate::{
+    Core, CoreId, HwId, MaximumSystemCharacteristics, Package, PackageId, Thread, ThreadId,
+};
 
 #[cfg(target_os = "none")]
 use crate::MachineInfo;
@@ -13,11 +15,11 @@ use crate::MachineInfo;
 use lazy_static::lazy_static;
 
 pub fn determine_hw_id_with_cpuid() -> HwId {
-    panic!("NYI");
+    HwId::Mpid(0)
 }
 
 pub fn get_topology(hwid: HwId) -> (ThreadId, CoreId, PackageId) {
-    panic!("NYI");
+    (0, 0, 0)
 }
 
 #[cfg(target_os = "none")]
@@ -34,7 +36,6 @@ lazy_static! {
     /// Not `no_global_oom_handling` safe, low priority as this allocates early
     /// during init and is static after (no hotplug support atm).
     pub static ref MACHINE_TOPOLOGY: MachineInfo = {
-
         MachineInfo::new(
             vec![
                 Thread {
