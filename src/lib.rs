@@ -28,11 +28,11 @@ use lazy_static::lazy_static;
 
 #[cfg(target_arch = "x86_64")]
 #[path = "arch/x86.rs"]
-mod arch;
+pub mod arch;
 
 #[cfg(target_arch = "aarch64")]
 #[path = "arch/aarch64.rs"]
-mod arch;
+pub mod arch;
 
 #[cfg(target_os = "none")]
 pub use arch::MACHINE_TOPOLOGY;

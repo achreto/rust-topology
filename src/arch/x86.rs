@@ -6,6 +6,8 @@ use core::convert::TryInto;
 
 extern crate x86;
 
+use x86::apic::ApicId;
+
 use crate::{CoreId, HwId, PackageId, ThreadId};
 
 #[cfg(target_os = "none")]
@@ -294,11 +296,11 @@ lazy_static! {
     };
 }
 
-impl core::convert::From<HwId> for x86::apic::ApicId {
-    fn from(hw_id: HwId) -> x86::apic::ApicId {
+impl core::convert::From<HwId> for ApicId {
+    fn from(hw_id: HwId) -> ApicId {
         match hw_id {
-            HwId::Apic(id) => x86::apic::ApicId::XApic(id.try_into().unwrap()),
-            HwId::X2Apic(id) => x86::apic::ApicId::X2Apic(id),
+            HwId::Apic(id) => ApicId::XApic(id.try_into().unwrap()),
+            HwId::X2Apic(id) => ApicId::X2Apic(id),
             _ => panic!("Unsupported hardware id"),
         }
     }
